@@ -1,0 +1,11 @@
+[Unit]
+Description=RC Car Video Transmitter
+Requires= rccar_configure_wifi.service
+After= rccar_configure_wifi.service
+
+[Service]
+ExecStart=/usr/local/bin/rccar_video_tx.bash
+# Restart=on-failure
+
+[Install]
+WantedBy=rccar.target 

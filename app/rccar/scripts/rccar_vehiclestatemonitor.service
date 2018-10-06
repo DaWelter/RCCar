@@ -1,0 +1,9 @@
+[Unit]
+Description=Blink LEDS.
+Requires=rccar_pigpio.service
+
+[Service]
+ExecStart=/usr/local/bin/rccar_vehiclestatemonitor.py
+
+[Install]
+WantedBy=basic.target

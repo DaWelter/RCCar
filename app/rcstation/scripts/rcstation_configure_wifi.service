@@ -1,0 +1,13 @@
+[Unit]
+Description=Configure Wifi for Wifibroadcast
+PartOf=rcstation.target 
+
+[Service]
+Type= oneshot
+RemainAfterExit= true
+ExecStart=/usr/local/bin/rcstation_configure_wifi.bash $STATION_WIFI monitor $CHANNEL2G
+ExecStop=/usr/local/bin/rcstation_configure_wifi.bash $STATION_WIFI managed $CHANNEL2G
+EnvironmentFile=/etc/rccar.conf
+
+[Install]
+WantedBy=rcstation.target

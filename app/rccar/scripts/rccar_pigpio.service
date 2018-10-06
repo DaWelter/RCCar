@@ -1,0 +1,10 @@
+[Unit]
+Description=Daemon required to control GPIO pins via pigpio. My copy with WantedBy replaced by my rccar target.
+
+[Service]
+ExecStart=/usr/bin/pigpiod -l
+ExecStop=/bin/systemctl kill pigpiod
+Type=forking
+
+[Install]
+WantedBy=basic.target

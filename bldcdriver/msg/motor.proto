@@ -1,0 +1,32 @@
+syntax = "proto2";
+
+// With nanopb, generate code by:
+// $NANOPB_BIN_DISTRIBUTION/generator-bin/protoc --nanopb_out=. motor.proto
+
+message MotorControlMsg {
+  required sint32 speed = 1;
+  //required bool enable = 2;
+}
+
+message MotorStatusMsg {
+  required float speed = 1; // Hz
+  required float phase_current = 2; // mA
+  required float voltage = 3; // mV
+  required float pwm_magnitude = 4; // counts.
+  required float temperature = 5;
+}
+
+message MotorScopeMsg {
+  required uint32 period = 1; // microseconds
+  // Note: Type sint32 does not work. Python side receives garbage.
+  // Note: Type int32 does not work on old Raspbian! Will interpret -1 as 4 million something.
+  //       Also remember to use the signed variant, pb_encode_svarint, in nanopb.
+  repeated sint32 values = 2 [packed=true];
+}
+
+message MotorReportContainerMsg {
+  oneof payload {
+    MotorStatusMsg status = 1;
+    MotorScopeMsg scope_phase_current = 2;
+  }
+}

@@ -1,0 +1,9 @@
+[Unit]
+Description=Monitor GPIO events. Respond to user interaction.
+
+[Service]
+ExecStart=/usr/local/bin/rccar_shutdownbutton.py
+
+
+[Install]
+WantedBy=rccar.target

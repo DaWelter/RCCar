@@ -1,0 +1,13 @@
+[Unit]
+Description=Control the vehicle and communicate with command station.
+Requires= rccar_udp_tx.service
+After= rccar_udp_tx.service
+Requires= rccar_udp_rx.service
+After= rccar_udp_rx.service
+
+[Service]
+ExecStart=/usr/local/bin/rccar_control_and_reporting_script.py
+
+
+[Install]
+WantedBy=rccar.target

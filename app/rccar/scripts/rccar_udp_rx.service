@@ -1,0 +1,11 @@
+[Unit]
+Description=RC Car Data Receiver
+Requires= rccar_configure_wifi.service
+After= rccar_configure_wifi.service
+
+[Service]
+ExecStart=/usr/local/bin/rccar_udp_rx.bash
+# Restart=on-failure
+
+[Install]
+WantedBy=rccar.target 

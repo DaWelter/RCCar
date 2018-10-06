@@ -1,0 +1,12 @@
+[Unit]
+Description=Configure Wifi for Wifibroadcast
+Requires=udev.service
+After=udev.service
+
+[Service]
+Type= oneshot
+ExecStart=/usr/local/bin/rccar_configure_wifi.bash $CAR_WIFI shutoff
+EnvironmentFile=/etc/rccar.conf
+
+[Install]
+WantedBy=basic.target

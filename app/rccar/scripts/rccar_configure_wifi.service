@@ -1,0 +1,14 @@
+[Unit]
+Description=Configure Wifi for Wifibroadcast
+Requires=network-online.target
+After=network-online.target
+
+[Service]
+Type= oneshot
+RemainAfterExit= true
+ExecStart=/usr/local/bin/rccar_configure_wifi.bash $CAR_WIFI monitor $CHANNEL2G
+ExecStop=/usr/local/bin/rccar_configure_wifi.bash $CAR_WIFI managed $CHANNEL2G
+EnvironmentFile=/etc/rccar.conf
+
+[Install]
+WantedBy=rccar.target
