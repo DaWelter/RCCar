@@ -1,0 +1,43 @@
+syntax = "proto2";
+
+import "motor.proto";
+
+message CarSteerMsg {
+  required sint32 speed = 1;
+  required float right = 2;
+  required float cam_right = 3;
+}
+
+message PingMsg {
+  required uint32 seq_num = 1;
+  required uint32 time_stamp = 2;
+};
+
+message CarStatusMsg {
+  required float speed = 1; // Hz
+  required float phase_current = 2; // mA
+  required float voltage = 3; // mV
+  required float pwm_magnitude = 4; // counts.
+  required float temperature = 5;
+  required float euler_h = 6;
+  required float euler_p = 7;
+  required float euler_b = 8;
+  required float system_load = 9;
+}
+
+
+message CarControlContainerMsg {
+  oneof payload {
+    CarSteerMsg steer = 1;
+    PingMsg ping = 2;
+  }
+}
+
+
+message CarReportContainerMsg {
+  oneof payload {
+    CarStatusMsg status = 1;
+    MotorScopeMsg scope_phase_current = 2;
+    PingMsg ping_response = 3;
+  }
+}
