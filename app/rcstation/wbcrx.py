@@ -15,7 +15,11 @@ import socket
 
 import pygame
 from PyQt4 import QtCore, QtGui, uic
+
 import pyqtgraph
+pyqtgraph.setConfigOption('background', 'k')
+pyqtgraph.setConfigOption('foreground', 'w')
+pyqtgraph.setConfigOptions(antialias=True)
 
 import rccarcommon
 from rccarcommon import telemetry
@@ -260,34 +264,41 @@ class ControlMainWindow(QtGui.QMainWindow):
     # configure bits of the UI
     self.ui.comm_indicator.auto_off_delay_millis = 100
 
+    def pen(col):
+      return pyqtgraph.mkPen(color=col, width=2)
+
     # setup graph views
     self.list_of_graphs = []
     tRange = 10.
     self.graphFwd = g = self.graphing_add_wipegraph(0, 0, tRange, 'Fwd', (-1., 1.))
+    self.plotGears       = g.addPlot(pen = pen('666'), name = 'gears')
+    self.plotFwdSet      = g.addPlot(pen = pen("a00"), name = 'set')
+    self.plotFwdRemote   = g.addPlot(pen = pen("00f"), name = 'remote')
+
+    self.graphRight = g = self.graphing_add_wipegraph(0, 1, self.graphFwd.timer, 'Right', (-1., 1.))
     self.graphing_add_legend(g)
-    self.plotGears       = g.addPlot(pen = '666', name = 'gears')
-    self.plotFwdSet      = g.addPlot(pen = "a00", name = 'set')
-    self.plotFwdRemote   = g.addPlot(pen = "00f", name = 'remote')
+    _ = g.addPlot(pen=pen('666'), name='gears')  # Dummy to get the legend
+    self.plotRightRemote = g.addPlot(pen = pen("00f"), name = 'remote')
+    self.plotRightSet  = g.addPlot(pen = pen("a00"), name = 'set')
 
-    self.graphRight = g = self.graphing_add_wipegraph(1, 0, self.graphFwd.timer, 'Right', (-1., 1.))
-    self.plotRightRemote = g.addPlot(pen = "00f", name = 'remote')
-    self.plotRightSet  = g.addPlot(pen = "a00", name = 'set')
-
-    self.graphCurrent = g = self.graphing_add_wipegraph(2, 0, self.graphFwd.timer, 'I', (-2., 2.))
-    self.plotCurrent  = g.addPlot(name = 'bat')
-    
-    self.graphVoltage = g = self.graphing_add_wipegraph(3, 0, self.graphFwd.timer, 'V', (-1., 14.))
+    self.graphVoltage = g = self.graphing_add_wipegraph(1, 0, self.graphFwd.timer, 'V Bat', (7., 13.), colspan=2)
     MIN_VOLTAGE = 1.1 * 8.
     MAX_VOLTAGE = 1.4 * 8.
-    g.add_hline(MIN_VOLTAGE, pyqtgraph.functions.mkPen(255,0,0,200))
+    g.add_hline(MIN_VOLTAGE, pyqtgraph.functions.mkPen(168,64,64,200))
     g.add_hline(MAX_VOLTAGE, pyqtgraph.functions.mkPen(128,128,128,200))    
-    self.plotVoltage  = g.addPlot(name = 'bat', pen = 'fff')
+    self.plotVoltage  = g.addPlot(name = 'bat', pen = pen('f00'))
 
-    self.graphRpm = g = self.graphing_add_wipegraph(4, 0, self.graphFwd.timer, 'RPM', (-5000, 5000))
-    self.plotRpmRemote = g.addPlot(pen = '00f', name = 'remote')
+    self.graphRpm = g = self.graphing_add_wipegraph(2, 0, self.graphFwd.timer, 'Motor Speed', (-200, 200), colspan=2)
+    self.plotRpmRemote = g.addPlot(pen = pen('00f'), name = 'remote')
 
-    self.graphCurrentScope = g = self.graphing_add_graph(5, 0, (0., 1.), 'Amps', (-1., 1.))
-    self.plotCurrentScope =  pyqtgraph.PlotDataItem(pen = 'fff')
+    self.graphPwm = g = self.graphing_add_wipegraph(3, 0, self.graphFwd.timer, 'PWM Duty Cycle', (-1, 1), colspan=2)
+    self.plotPwmRemote = g.addPlot(pen = pen('aaa'), name = 'remote')
+
+    self.graphCurrent = g = self.graphing_add_wipegraph(4, 0, self.graphFwd.timer, 'Phase Current (Avg)', (-1., 3.), colspan=2)
+    self.plotCurrent  = g.addPlot(pen = pen('f0f'), name = 'bat')
+
+    self.graphCurrentScope = g = self.graphing_add_graph(5, 0, (0., 1.), 'Phase Current', (-1., 1.), colspan=2)
+    self.plotCurrentScope =  pyqtgraph.PlotDataItem(pen = pen('f0f'))
     g.addItem(self.plotCurrentScope)
 
     self.update_tick_timer = t = QtCore.QTimer(self)
@@ -300,20 +311,20 @@ class ControlMainWindow(QtGui.QMainWindow):
     '''for building the gui'''
     pyQtGraphHeartBeat.MyLegend.addTo(g.graph, (1.,0.,), (1.,0.), (-1.,1.), size = (5, 5))
 
-  def graphing_add_graph(self, row, col, tRange, title, yRange):
+  def graphing_add_graph(self, row, col, tRange, title, yRange, colspan = 1):
     graph = pyqtgraph.PlotItem(title = title)
     graph.enableAutoRange('x', False)
     graph.enableAutoRange('y', False)
     graph.setYRange(*yRange)
     graph.setXRange(*tRange)
     graph.setMouseEnabled(x=False, y=False)
-    self.ui.graphing.addItem(graph, row  = row, col = col)
+    self.ui.graphing.addItem(graph, row  = row, col = col, colspan = colspan)
     return graph
 
-  def graphing_add_wipegraph(self, row, col, tRange, title, yRange):
+  def graphing_add_wipegraph(self, row, col, tRange, title, yRange, colspan = 1):
     '''for building the gui'''
     graph = pyQtGraphHeartBeat.WipeGraph(tRange, title=title)
-    self.ui.graphing.addItem(graph.graph, row  = row, col = col)
+    self.ui.graphing.addItem(graph.graph, row  = row, col = col, colspan = colspan)
     graph.setYRange(*yRange)
     self.list_of_graphs.append(graph)
     return graph
@@ -388,9 +399,9 @@ class ControlMainWindow(QtGui.QMainWindow):
 
   def update_ui_plots(self, data):
     t = time.time() # TODO: Don't use local time. Would be better to use time stamp on the remote vehicle or something like that.
-    plots    = [ self.plotVoltage, self.plotCurrent, self.plotRpmRemote ]
+    plots    = [ self.plotVoltage, self.plotCurrent, self.plotRpmRemote, self.plotPwmRemote ]
     MILLIAMP_TO_AMP = 1.e-3
-    stateVec = [ data.voltage, MILLIAMP_TO_AMP*data.phase_current, data.speed ]
+    stateVec = [ data.voltage, MILLIAMP_TO_AMP*data.phase_current, data.speed, data.pwm_magnitude ]
     for p, v in zip(plots, stateVec):
       p.insert(t, v)
 
@@ -404,6 +415,8 @@ class ControlMainWindow(QtGui.QMainWindow):
       u'%.0f°' % data.euler_p)
     self.ui.lbl_bank.setText(
       u'%.0f°' % data.euler_b)
+    self.ui.lbl_temperature.setText(
+      u'%.0f°' % data.temperature)
 
   def update_ui_scope(self, data):
     period, values = data
