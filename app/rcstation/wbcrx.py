@@ -46,7 +46,6 @@ def getWbcInfo():
 # http://stackoverflow.com/questions/10694971/pyqt-update-gui
 # how to use a timer to update stuff:
 # http://stackoverflow.com/questions/23786340/use-qthread-to-periodically-update-a-qtablewidget-pyqt
-
 #documentation of signals and slots in python
 # documentation: http://pyqt.sourceforge.net/Docs/PyQt4/new_style_signals_slots.html
 
@@ -67,7 +66,6 @@ def convert_scope_phase_current_message(msg):
   return (period, data)
 
 
-MSG_RECORDING_STOP = 1
 MSG_VIDEOFRAME_QUEUED = 2
 MSG_TELEMETRY_QUEUED = 3
 
@@ -224,21 +222,6 @@ class ReceiverState(QtCore.QObject):
   def post_message(self, msg):
     self.trigger_post_message.emit(msg)
 
-  def toggle_recording(self, on):
-    if on == True and (self.recorder is None or not self.recorder.is_alive()):
-      stop_cb = lambda : self.post_message(MSG_RECORDING_STOP)  # this is called from a thread, and post the message to Qt's event system
-      recorder = recordermodule.Recorder(stop_cb)
-      recorder.start()
-      # This is sort of crucial that the variable is assigned only when everything is set up.
-      # Because the video thread is simultaneously checking for receiver.recorder being None
-      # and if it isn't it's going to try to do something with it.
-      self.recorder = recorder
-    elif on == False and self.recorder is not None:
-      recorder = self.recorder
-      self.recorder = None
-      recorder.gogogo = False
-      recorder.join()
-
   def _start_threads(self):
     for t in [self.videothread, self.telemetry1thread, self.telemetry2thread]:
       t.start()
@@ -276,8 +259,7 @@ class ControlMainWindow(QtGui.QMainWindow):
 
     # configure bits of the UI
     self.ui.comm_indicator.auto_off_delay_millis = 100
-    QtCore.QObject.connect(self.ui.recording_btn, QtCore.SIGNAL('clicked(bool)'), self.recording_button_clicked)
-    
+
     # setup graph views
     self.list_of_graphs = []
     tRange = 10.
@@ -339,19 +321,16 @@ class ControlMainWindow(QtGui.QMainWindow):
 
   @QtCore.pyqtSlot(int)
   def handle_message(self, msg):
-    #print 'MESSAGE', msg
-    if msg == MSG_RECORDING_STOP:
-      self.on_recording_stop()
     if msg == MSG_VIDEOFRAME_QUEUED:
       self.on_videoframe_ready()
     if msg == MSG_TELEMETRY_QUEUED:
       self.on_telemetry_queued()
 
 
-  @QtCore.pyqtSlot()
-  def on_recording_stop(self):      
-    self.ui.recording_btn.setChecked(False)
-    self.ui.recording_btn.update()
+  # @QtCore.pyqtSlot()
+  # def on_recording_stop(self):
+  #   self.ui.recording_btn.setChecked(False)
+  #   self.ui.recording_btn.update()
 
 
   @QtCore.pyqtSlot()
