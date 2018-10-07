@@ -18,6 +18,8 @@ Dependencies:
 * cython (0.28 from Feb. 2018 or later) for crc8cy.
 * boost-python
 * libav
+* minimu9-ahrs (https://github.com/DavidEGrayson/minimu9-ahrs)
+* pyquaternion
 
 Non-python dependencies:
 * socat
@@ -27,4 +29,5 @@ Configuration:
 * 'deny-interfaces=wlan1 added to avahi-daemon.conf
 * Shutting off the wifi initially on boot seems to be important. I got errors when switching to monitor mode, otherwise.
 
-
+Todo:
+* Consider QFlightInstruments (https://sourceforge.net/projects/qfi/)

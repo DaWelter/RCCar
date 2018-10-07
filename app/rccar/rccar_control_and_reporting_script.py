@@ -8,7 +8,8 @@ import time
 import Queue as queue
 import subprocess
 from collections import namedtuple
-import contextlib
+import pyquaternion
+import math
 
 from rccarcommon import misc
 from rccarcommon import telemetry
@@ -118,7 +119,7 @@ def open_remote_control_sockets():
 
 
 def run_imu_process():
-  imu_process = subprocess.Popen(['minimu9-ahrs', '-b', '/dev/i2c-1', '--output=euler'],
+  imu_process = subprocess.Popen(['minimu9-ahrs', '-b', '/dev/i2c-1', '--output=quaternion'],
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                              bufsize=0)
   imu_fd = imu_process.stdout
@@ -147,14 +148,41 @@ class SystemStatePoll(object):
       return -1
 
 
+# https://en.wikipedia.org/wiki/Conversion_between_quaternions_and_Euler_angles
+def quaternion_to_euler_angle(w, x, y, z):
+  t0 = +2.0 * (w * x + y * z)
+  t1 = +1.0 - 2.0 * (x * x + y * y)
+  X = math.degrees(math.atan2(t0, t1))
+
+  t2 = +2.0 * (w * y - z * x)
+  t2 = +1.0 if t2 > +1.0 else t2
+  t2 = -1.0 if t2 < -1.0 else t2
+  Y = math.degrees(math.asin(t2))
+
+  t3 = +2.0 * (w * z + x * y)
+  t4 = +1.0 - 2.0 * (y * y + z * z)
+  Z = math.degrees(math.atan2(t3, t4))
+
+  return X, Y, Z
+
+
 def parse_imu_output(data):
-  # Extract euler angles as float
-  # TODO: named tuple would be nicer
-  data = data.split()
-  data = data[:3]
-  data = list(map(float, data))
-  assert len(data) == 3
-  return data
+  ''' Extract euler angles from IMU readings. '''
+  try:
+    data = data.split()
+    qw, qx, qy, qz = list(map(float, data[:4]))
+  except:
+    return 0, 0, 0
+  else:
+    q = pyquaternion.Quaternion(qw, qx, qy, qz)
+    # Additional rotation due to mounting orientation of the IMU module.
+    q = q * pyquaternion.Quaternion(axis = [0., 0., 1.], angle = -math.pi*0.5)
+    qw, qx, qy, qz = q
+    roll, pitch, yaw = quaternion_to_euler_angle(qw, qx, qy, qz)
+    if yaw < 0.:
+      yaw += 360.
+    #print ("H %f; P %f; R %f" % (yaw, pitch, roll))
+    return yaw, pitch, roll
 
 
 class SendToStation(object):
@@ -174,6 +202,7 @@ class SendToStation(object):
       euler_b = 0,
       system_load = -1
     )
+    self.last_imu_reading = ''
 
   def update_loop(self):
     while 1:
@@ -186,10 +215,7 @@ class SendToStation(object):
       # Store this one. Send together with motor data.
       self.car_status_msg.system_load = data
     if identifier == ITEM_ID_IMU:
-      h, p, b = data
-      self.car_status_msg.euler_h = h
-      self.car_status_msg.euler_p = p
-      self.car_status_msg.euler_b = b
+      self.last_imu_reading = data
     elif identifier == ITEM_ID_MOTOR_PACKET:
       if data.HasField('status'):
         data = data.status
@@ -199,6 +225,10 @@ class SendToStation(object):
         m.voltage = data.voltage
         m.pwm_magnitude = data.pwm_magnitude
         m.temperature = data.temperature
+        h, p, b = parse_imu_output(self.last_imu_reading)
+        self.car_status_msg.euler_h = h
+        self.car_status_msg.euler_p = p
+        self.car_status_msg.euler_b = b
         self.send_system_and_motor_state(m)
       elif data.HasField('scope_phase_current'):
         data = data.scope_phase_current
@@ -318,7 +348,7 @@ def main():
             #print ('Read from Motor Link: "{:s}"'.format(data))
             motor_msg_decoder.putc_and_maybe_decode(data)
           elif read_fd == imu_fd:
-            imu_reading = parse_imu_output(imu_fd.read())
+            imu_reading = imu_fd.read()
             tx_queue.put((ITEM_ID_IMU, imu_reading))
           elif read_fd == sock_tx:
             print ('Error: Should not receive from tx socket!')
