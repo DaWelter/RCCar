@@ -335,7 +335,7 @@ class ControlMainWindow(QtGui.QMainWindow):
 
   @QtCore.pyqtSlot()
   def on_videoframe_ready(self):
-    self.on_data_received()
+    self.blink_comms_indicator()
     try:
       frame_img = self.receiver.videoqueue.get_nowait()
     except Queue.Empty:
@@ -350,9 +350,10 @@ class ControlMainWindow(QtGui.QMainWindow):
     except Queue.Empty:
       return
     if kind == DATA_REMOTE_MEASURED:
-      self.on_data_received()
+      self.blink_comms_indicator()
       self.update_ui_telemetry(stats)
     elif kind == DATA_REMOTE_PHASE_CURRENT_SCOPE:
+      # Not that important so don't blink here.
       self.update_ui_scope(stats)
     elif kind == DATA_WBC_INFO:
       self.update_ui_wbc_info(stats)
@@ -361,12 +362,12 @@ class ControlMainWindow(QtGui.QMainWindow):
 
 
   def update_ui_wbc_info(self, stats):
-    txt = 'Signal: ERR' if stats.error else \
-        ('Signal: %f dbm' % stats.signalStrengthDbm)
-    self.ui.statuslabel.setText(txt)
+    txt = 'ERR' if stats.error else \
+        ('%.0fdbm' % stats.signalStrengthDbm)
+    self.ui.lbl_linkquality.setText(txt)
 
 
-  def on_data_received(self):
+  def blink_comms_indicator(self):
     self.ui.comm_indicator.turn_on()
 
 
@@ -374,19 +375,35 @@ class ControlMainWindow(QtGui.QMainWindow):
   def recording_button_clicked(self, on):
     #print 'CLICK', on
     self.receiver.toggle_recording(on)
-  
+
+
   # NOTE: data display appears extra jittery because packets of full telemetry
   # info come in clusters of several within a very short time. (wifibroadcast).
   # Using normal networking, samples arrive more evenly.
   def update_ui_telemetry(self, data):
     assert type(data) is rccarcommon.telemetry.CarStatusMsg
-    t = time.time()
+    self.update_ui_plots(data)
+    self.update_ui_labels(data)
+
+
+  def update_ui_plots(self, data):
+    t = time.time() # TODO: Don't use local time. Would be better to use time stamp on the remote vehicle or something like that.
     plots    = [ self.plotVoltage, self.plotCurrent, self.plotRpmRemote ]
     MILLIAMP_TO_AMP = 1.e-3
     stateVec = [ data.voltage, MILLIAMP_TO_AMP*data.phase_current, data.speed ]
     for p, v in zip(plots, stateVec):
       p.insert(t, v)
 
+
+  def update_ui_labels(self, data):
+    self.ui.lbl_systemload.setText(
+      u'%.0f%%' % (100*data.system_load))
+    self.ui.lbl_heading.setText(
+      u'%.0f°' % data.euler_h)
+    self.ui.lbl_pitch.setText(
+      u'%.0f°' % data.euler_p)
+    self.ui.lbl_bank.setText(
+      u'%.0f°' % data.euler_b)
 
   def update_ui_scope(self, data):
     period, values = data
