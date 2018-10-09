@@ -308,7 +308,7 @@ class SteeringControl(object):
       self.setupKeyboardControl()
   
   def setupKeyboardControl(self):
-    self.rawFwd = kbFwd     = KeyboardInputFilter(QtCore.Qt.Key_Up, QtCore.Qt.Key_Down)
+    self.rawFwd = kbFwd     = KeyboardInputFilter(QtCore.Qt.Key_W, QtCore.Qt.Key_S)
     # create pipeline nodes
     fwdScale = FunctionMapFilter(lambda x: x * 1.)
     fwdFilt  = SecondOrderFilter(50.)
@@ -322,17 +322,21 @@ class SteeringControl(object):
     fwdFilt2.source = fwdInt
     self.filtFwd = fwdFilt2
     # create pipeline nodes
-    self.rawRight = kbRight   = KeyboardInputFilter(QtCore.Qt.Key_Right, QtCore.Qt.Key_Left)
+    self.rawRight = kbRight   = KeyboardInputFilter(QtCore.Qt.Key_D, QtCore.Qt.Key_A)
     rightFilt = SecondOrderFilter(10.)
     # setup pipeline    
-    rightFilt.source = kbRight    
+    rightFilt.source = kbRight
     self.filtRight = rightFilt
     # We don't use the gears mode with keyboards, so just make 
     # this class return the sensible value of 1., i.e. full speed.
     self.filtGears = ConstantState(1.)
-    self.filtCamera = self.rawCamera = ConstantState(0.)
+    # Camera control
+    self.rawCamera = kbCam = KeyboardInputFilter(QtCore.Qt.Key_Right, QtCore.Qt.Key_Left)
+    camFilt = SecondOrderFilter(10.)
+    camFilt.source = kbCam
+    self.filtCamera = camFilt
     # gui stuff
-    self.eventHandlers += [kbFwd, kbRight]
+    self.eventHandlers += [kbFwd, kbRight, kbCam]
 
   def setupJoystickControl(self):
     filename = os.path.join(os.environ['HOME'], '.local', 'rccar', 'joystick.json')
