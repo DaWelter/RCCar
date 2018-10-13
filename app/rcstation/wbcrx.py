@@ -69,6 +69,7 @@ def convert_scope_phase_current_message(msg):
   period = msg.period * 1.e-3
   return (period, data)
 
+MAX_FWD_SPEED = 200
 
 MSG_VIDEOFRAME_QUEUED = 2
 MSG_TELEMETRY_QUEUED = 3
@@ -290,6 +291,7 @@ class ControlMainWindow(QtGui.QMainWindow):
 
     self.graphRpm = g = self.graphing_add_wipegraph(2, 0, self.graphFwd.timer, 'Motor Speed', (-200, 200), colspan=2)
     self.plotRpmRemote = g.addPlot(pen = pen('00f'), name = 'remote')
+    self.plotRpmSet    = g.addPlot(pen = pen('aaa'), name='set')
 
     self.graphPwm = g = self.graphing_add_wipegraph(3, 0, self.graphFwd.timer, 'PWM Duty Cycle', (-1, 1), colspan=2)
     self.plotPwmRemote = g.addPlot(pen = pen('aaa'), name = 'remote')
@@ -297,7 +299,7 @@ class ControlMainWindow(QtGui.QMainWindow):
     self.graphCurrent = g = self.graphing_add_wipegraph(4, 0, self.graphFwd.timer, 'Phase Current (Avg)', (-1., 3.), colspan=2)
     self.plotCurrent  = g.addPlot(pen = pen('f0f'), name = 'bat')
 
-    self.graphCurrentScope = g = self.graphing_add_graph(5, 0, (0., 1.), 'Phase Current', (-1., 1.), colspan=2)
+    self.graphCurrentScope = g = self.graphing_add_graph(5, 0, (0., 1.), 'Phase Current', (-3., 3.), colspan=2)
     self.plotCurrentScope =  pyqtgraph.PlotDataItem(pen = pen('f0f'))
     g.addItem(self.plotCurrentScope)
 
@@ -433,8 +435,8 @@ class ControlMainWindow(QtGui.QMainWindow):
 
   def commanded_to_graphing(self, t, commanded):
     (fwd, right, cam), input_raw, gears = commanded
-    plots = [ self.plotFwdSet, self.plotRightSet, self.plotGears ]
-    for p, v in zip(plots, [fwd, right, gears]):
+    plots = [ self.plotFwdSet, self.plotRightSet, self.plotGears, self.plotRpmSet ]
+    for p, v in zip(plots, [fwd, right, gears, fwd*MAX_FWD_SPEED]):
       p.insert(t, v)
 
 
@@ -479,7 +481,7 @@ class ControlMainWindow(QtGui.QMainWindow):
     fwd, right, cam = self.receiver.command.output
     msg = telemetry.CarControlContainerMsg(
       steer = telemetry.CarSteerMsg(
-        speed = int(fwd * 100),
+        speed = int(fwd * MAX_FWD_SPEED),
         right = right,
         cam_right = cam
       )
