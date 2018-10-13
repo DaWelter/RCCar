@@ -175,8 +175,8 @@ inline float mod_proper(float x, float y)
 }
 
 static constexpr int16_t MAX_CURRENT_LIMIT_MILLIAMP = 2000;
-static constexpr float MAX_FRACTIONAL_MOTOR_VOLTAGE = 0.2f;
-static constexpr int32_t SPEED_CONTROL_LIMIT_HZ = 100;
+static constexpr float MAX_FRACTIONAL_MOTOR_VOLTAGE = 0.5f;
+static constexpr int32_t SPEED_CONTROL_LIMIT_HZ = 200;
 
 static constexpr float DEG_TO_RAD = M_PI/180.f;
 
