@@ -300,7 +300,7 @@ class ProcessCommandThread(threading.Thread):
     right = misc.clamp(msg.right, -1.,1.)
     cam_yaw = misc.clamp(msg.cam_right, -1., 1.)
     self.servos.steer.move_to(-right)
-    actual_cam_yaw = cam_yaw * 0.8 + right * 0.2
+    actual_cam_yaw = min(1., max(-1., cam_yaw + right * 0.6))
     self.servos.cam_yaw.move_to(-actual_cam_yaw)
 
 
@@ -312,8 +312,8 @@ def main():
 
   Servos = namedtuple('Servos', 'steer cam_yaw cam_pitch')
   with \
-       ServoControl(PIN_WHEEL_STEER, (-1., 1.), (1., 2.)) as steer_servo,\
-       ServoControl(PIN_CAM_YAW, (-1., 1.), (1., 2.)) as cam_yaw_servo,\
+       ServoControl(PIN_WHEEL_STEER, (-1., 1.), (1.5 - 0.4, 1.5 + 0.4)) as steer_servo,\
+       ServoControl(PIN_CAM_YAW, (-1., 1.), (0.9, 2.1)) as cam_yaw_servo,\
        ServoControl(PIN_CAM_PITCH, (-1., 1.), (1., 2.)) as cam_pitch_servo:
     servos = Servos(steer_servo, cam_yaw_servo, cam_pitch_servo)
 
