@@ -11,14 +11,16 @@ SLEEPTIME=0.5
 SLEEPTIMEB=0.6
 
 function monitor_mode_on {
-  echo "$1 power on ..."
-  iwconfig $1 txpower on
-  sleep $SLEEPTIME
+#  echo "$1 power on ..."
+#  iwconfig $1 txpower on
+#  sleep $SLEEPTIME
   echo "$1 down ..."
   ifconfig $1 down
   sleep $SLEEPTIME
   echo "monitor mode ..."
   iw dev $1 set monitor otherbss fcsfail
+  sleep $SLEEPTIME
+  rfkill unblock all
   sleep $SLEEPTIME
   echo "$1 up ..."
   ifconfig $1 up
@@ -36,13 +38,13 @@ function monitor_mode_off {
   sleep $SLEEPTIME
   echo "managed mode ..."
   iw dev $1 set type managed
-  sleep $SLEEPTIME
-  echo "$1 up ..."
-  ifconfig $1 up
-  sleep $SLEEPTIME
-  echo "$1 power off ..."
-  iwconfig $1 txpower off
-  sleep $SLEEPTIMEB
+#  sleep $SLEEPTIME
+#  echo "$1 up ..."
+#  ifconfig $1 up
+#  sleep $SLEEPTIME
+#  echo "$1 power off ..."
+#  iwconfig $1 txpower off
+#  sleep $SLEEPTIMEB
 }
 
 
