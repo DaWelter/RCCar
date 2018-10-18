@@ -17,7 +17,7 @@ except:
   from PyQt4 import QtCore
 
 from qtjoystickselection import unassignedJoystick, InputDeviceSelection
-from rccarcommon.misc import sgn
+from rccarcommon.misc import sgn, clamp
 
 
 class ConstantState(object):
@@ -124,6 +124,23 @@ class ForwardControlIntegrator(TimeContinuousSignalFilter2):
     self.state = self.state + dt * f**3 * self.coeffFwdRate
     self.state = min(max(self.state, self.fwdBounds[0]), self.fwdBounds[1])
     self.fwdLastRate = fnofilt
+
+
+class LinearRampWithHandBrake(TimeContinuousSignalFilter2):
+  def __init__(self, rate, brake_rate, normal_decay_rate):
+    TimeContinuousSignalFilter2.__init__(self)
+    self.rate = rate
+    self.brake_rate = brake_rate
+    self.normal_decay_rate = normal_decay_rate
+    self.state = 0.
+
+  def update(self, dt, u, u_brake):
+    K = self.rate * u
+    du = K * dt * (1. - u_brake)
+    K = self.brake_rate / 0.01
+    db = clamp(-K*self.state, -self.brake_rate, self.brake_rate) * dt * u_brake
+    dd = clamp(-self.normal_decay_rate / 0.01 * self.state, -self.normal_decay_rate, self.normal_decay_rate) * dt
+    self.state = clamp(self.state + du + db + dd, -1., 1.)
 
 
 class DiscretValueSwitch(TimeContinuousSignalFilter):
@@ -353,18 +370,21 @@ class SteeringControl(object):
     self.rawSlower = stickSlower = config['slower']
     self.rawCamera = stickCamera = config['camAxis']
     stickFwd.multiplier = -1.
-    stickSlower.multiplier = -1.
+    #stickSlower.multiplier = -1.
 
-    gears = chain(BinaryFunctionMapFilter(lambda a,b: a + b), stickFaster, stickSlower)
-    gears = chain(DiscretValueSwitch([0.05, 0.1, 0.2, 0.5, 1.], 0.05, 0.5, 0.1), gears)
-    fwd = chain(BinaryFunctionMapFilter(lambda a,b: a * b), 
-                gears,
-                chain(FunctionMapFilter(lambda x: sgn(x)*pow(abs(x), 2.0)),
-                      stickFwd))
-    fwd = chain(SecondOrderFilter(30.), fwd)
+    #gears = chain(BinaryFunctionMapFilter(lambda a,b: a + b), stickFaster, stickSlower)
+    #gears = chain(DiscretValueSwitch([0.05, 0.1, 0.2, 0.5, 1.], 0.05, 0.5, 0.1), gears)
+    gears = chain(BinaryFunctionMapFilter(lambda a, b: max(a,b)), stickFaster, stickSlower)
+    # fwd = chain(BinaryFunctionMapFilter(lambda a,b: a * b),
+    #             gears,
+    #             chain(FunctionMapFilter(lambda x: sgn(x)*pow(abs(x), 1.0)),
+    #                   stickFwd))
+    #fwd = chain(SecondOrderFilter(30.), fwd)
+    fwd = stickFwd
+    fwd = chain(LinearRampWithHandBrake(1., 2., 0.2), fwd, gears)
     self.filtFwd = fwd
     self.filtGears   = gears
-    self.filtCamera = self.rawCamera # Is filtered on the uC.
+    self.filtCamera = self.rawCamera
     
     right = chain(SecondOrderFilter(30.),
                   stickRight)
