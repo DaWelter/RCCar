@@ -1,32 +1,23 @@
 # Camera image settings. Native resolutions see (http://picamera.readthedocs.io/en/release-1.10/fov.html)
-#WIDTH=1280
-#HEIGHT=720
-#FPS=30
-
-#WIDTH=640
-#HEIGHT=480
-#FPS=45
-#BITRATE=1000000
-
 WIDTH=1296
 HEIGHT=730
-FPS=15
+FPS=30
 BITRATE=3000000
 KEYFRAMEINTERVAL=30
 
 # Transmission and recording settings
-CHANNEL2G="1"
-CHANNEL5G="149"
+CHANNEL2G="12"
 CAR_WIFI="wlan1"
-STATION_WIFI="wlx60e327077c67"
+STATION_WIFI="wlan0"
 
-##################################
 #change these only if you know what you are doing (and remember to change them on both sides)
 BLOCK_SIZE=8
 FECS=4
 PACKET_LENGTH=1024
-##################################
+TRANSMISSION_COUNT=1
+
 BLOCK_SIZE_TEL=4
 FECS_TEL=2
-PACKET_LENGTH_TEL=64
-##################################
+PACKET_LENGTH_TEL=16
+TRANSMISSION_COUNT_CTRL=1
+TRANSMISSION_COUNT_TEL=1
