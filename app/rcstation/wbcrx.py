@@ -32,19 +32,46 @@ import inputfilter
 import recordermodule
 
 
-WbcInfo = collections.namedtuple('WbcInfo', 'signalStrengthDbm error')
-def getWbcInfo():
-  status = wifibroadcastinfo.status()
-  if status:
-    assert len(status.adapters) == 1
-    return WbcInfo(
-      signalStrengthDbm = float(status.adapters[0].current_signal_dbm),
-      error = False)
-  else:
-    return WbcInfo(
-      signalStrengthDbm=-float('inf'),
-      error = True
-    )
+WbcInfo = collections.namedtuple('WbcInfo', 'signalStrengthDbm dataRate error')
+
+class WbcMonitor(object):
+  def __init__(self, which):
+    assert which in ('video', 'tel')
+    self.last_received_block_count = 0
+    self.last_time = time.time()
+    self.data_rate = 0
+    cfg = misc.load_settings()
+    # Todo: Take retransmission into account if/when I actually use it.
+    if which == 'video':
+      self.port = 0
+      self.bits_per_block = (int(cfg['BLOCK_SIZE'])+int(cfg['FECS']))*int(cfg['PACKET_LENGTH'])*8.e-6
+    else:
+      self.port = 1
+      self.bits_per_block   = (int(cfg['BLOCK_SIZE_TEL'])+int(cfg['FECS_TEL']))*int(cfg['PACKET_LENGTH_TEL'])*8.e-6
+
+
+  def getInfo(self):
+    status = wifibroadcastinfo.status(port_num=self.port)
+    if status:
+      assert len(status.adapters) == 1
+      t = time.time()
+      if t - self.last_time > 1.:
+        b = status.received_block_cnt
+        self.data_rate = (b - self.last_received_block_count) / (t - self.last_time)
+        self.data_rate *= self.bits_per_block
+        self.last_received_block_count = b
+        self.last_time = t
+      return WbcInfo(
+        signalStrengthDbm=float(status.adapters[0].current_signal_dbm),
+        dataRate=self.data_rate,
+        error=False)
+    else:
+      return WbcInfo(
+        signalStrengthDbm=-float('inf'),
+        dataRate=0.,
+        error=True
+      )
+
 
 #updating the gui from a thread: 
 # http://stackoverflow.com/questions/10694971/pyqt-update-gui
@@ -147,6 +174,8 @@ class Telemetry2Thread(BaseThread):
     self.gogogo = True
     self.receiver = receiver
     self.daemon = True
+    self.wbcmonitor_video = WbcMonitor('video')
+    self.wbcmonitor_tel = WbcMonitor('tel')
 
   def enqueue(self, stats):
     misc.queue_put_nowait(self.receiver.telemetryqueue, (DATA_WBC_INFO, stats))
@@ -154,9 +183,10 @@ class Telemetry2Thread(BaseThread):
   
   def run(self):
     while self.gogogo:
-      stats = getWbcInfo()
-      self.enqueue(stats)
-      time.sleep(0.2)
+      stats1 = self.wbcmonitor_video.getInfo()
+      stats2 = self.wbcmonitor_tel.getInfo()
+      self.enqueue((stats1,stats2))
+      time.sleep(0.5)
     print('telemetry 2 thread stop')
 
 
@@ -375,9 +405,17 @@ class ControlMainWindow(QtGui.QMainWindow):
 
 
   def update_ui_wbc_info(self, stats):
-    txt = 'ERR' if stats.error else \
-        ('%.0fdbm' % stats.signalStrengthDbm)
-    self.ui.lbl_linkquality.setText(txt)
+    stats1, stats2 = stats
+    if stats1.error or stats2.error:
+      txt_rate = 'ERR'
+      txt_link = 'ERR'
+    else:
+      rate = stats1.dataRate + stats2.dataRate
+      link = min(stats1.signalStrengthDbm, stats2.signalStrengthDbm)
+      txt_link = '%.0fdbm' % link
+      txt_rate =  '%.0fMb/s' % rate
+    self.ui.lbl_linkquality.setText(txt_link)
+    self.ui.lbl_datarate.setText(txt_rate)
 
 
   def blink_comms_indicator(self):

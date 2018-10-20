@@ -92,8 +92,8 @@ def _pythonize(cst):
     adapters.append(adapter)
   return status
 
-def status():
-  cst = readshm('/wifibroadcast_rx_status_0')
+def status(port_num = 0):
+  cst = readshm('/wifibroadcast_rx_status_%i' % port_num)
   if not cst:
     return None
   else:
@@ -101,5 +101,5 @@ def status():
 
 
 if __name__ == '__main__':
-  info = readshm('/wifibroadcast_rx_status_0')
+  info = readshm('/wifibroadcast_rx_status_1')
   print_wifibroadcast_rx_status_t(info)
