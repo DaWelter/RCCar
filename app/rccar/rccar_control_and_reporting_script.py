@@ -111,7 +111,7 @@ def open_remote_control_sockets():
   # Messages come in here ...
   sock_rx = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
   sock_rx.bind(('', REMOTE_CONTROL_RX_PORT))
-  sock_rx.settimeout(0.1)
+  sock_rx.settimeout(0.05)
   # Messages go out this way ...
   sock_tx = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
   sock_tx.connect(('127.0.0.1', REMOTE_CONTROL_TX_PORT))
@@ -258,6 +258,10 @@ class ProcessCommandThread(threading.Thread):
     self.sock_rx = sock_rx
     self.command_decoder = telemetry.CarCommandDecoder(self.on_command_received)
     self.want_stop = threading.Event()
+    self.cam_filter_state = (0., 0.)
+    self.cam_filter_params = (5., misc.second_order_filter_damping_ratio_to_cP(5., 1.2))
+    self.last_t = time.time()
+    self.last_steer_msg = None
 
   def stop(self):
     print ("Requested stop for {}".format(type(self).__name__))
@@ -266,6 +270,7 @@ class ProcessCommandThread(threading.Thread):
   def run(self):
     while not self.want_stop.is_set():
       self.read_and_process_commands()
+      self.maybe_actuate_servo()
     print ("Thread Stopped")
 
   def read_and_process_commands(self):
@@ -288,6 +293,7 @@ class ProcessCommandThread(threading.Thread):
   def on_command_received(self, msg):
     #print ("Command packet received: {}".format(msg))
     if msg.HasField('steer'):
+      self.last_steer_msg = msg.steer
       self.respond_to_steer_command(msg.steer)
 
   def respond_to_steer_command(self, msg):
@@ -296,13 +302,17 @@ class ProcessCommandThread(threading.Thread):
       speed = msg.speed)
     motor_packet_data = telemetry.encode(motor_cmd)
     self.motor_link.write(motor_packet_data)
-    # Then control servos
-    right = misc.clamp(msg.right, -1.,1.)
-    cam_yaw = misc.clamp(msg.cam_right, -1., 1.)
-    self.servos.steer.move_to(-right)
-    actual_cam_yaw = min(1., max(-1., cam_yaw + right * 0.6))
-    self.servos.cam_yaw.move_to(-actual_cam_yaw)
 
+  def maybe_actuate_servo(self):
+    msg = self.last_steer_msg
+    dt = min(0.1, time.time() - self.last_t)
+    if msg is not None and dt > 0.001:
+      right = misc.clamp(msg.right, -1.,1.)
+      cam_yaw = misc.clamp(msg.cam_right, -1., 1.)
+      actual_cam_yaw = misc.clamp(cam_yaw + right * 0.6, -1., 1.)
+      self.cam_filter_state = misc.second_order_filter(self.cam_filter_state, dt, actual_cam_yaw, self.cam_filter_params)
+      self.servos.steer.move_to(-right)
+      self.servos.cam_yaw.move_to(-misc.clamp(self.cam_filter_state[1], -1., 1.))
 
 
 def main():

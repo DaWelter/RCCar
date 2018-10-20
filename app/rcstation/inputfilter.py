@@ -87,7 +87,6 @@ class SecondOrderFilter(TimeContinuousSignalFilter):
      of a step input reaches the final value in the least amount of
      time without overshoot.
   '''
-  #STEADY_STATE_FWD_MAX = 0.90
   def __init__(self, coeffD, springyness = 1.):
     TimeContinuousSignalFilter.__init__(self)
     self.state   = 0. # position

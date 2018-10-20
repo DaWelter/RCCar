@@ -165,3 +165,15 @@ def load_settings():
       except:
         print "Warning: failed to read line '%s' of rccar.conf" % line.strip()
   return out
+
+
+def second_order_filter_damping_ratio_to_cP(cD, damping):
+  return cD ** 2 / 4. / damping
+
+def second_order_filter(X, dt, f, params):
+  v, y = X
+  cD, cP = params
+  # euler integration
+  yNew = y + v * dt
+  vNew = v + dt * ((f - y)*cP - cD * v)
+  return (vNew, yNew)
