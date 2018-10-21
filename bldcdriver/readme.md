@@ -1,15 +1,16 @@
-Bldc Driver Firmware
+BLDC Driver Firmware
 --------------------
 
-This is the code for my brushless motor driver.
+This is the code for my brushless motor driver. It is based on Arduino & Teensy.
 
-Dependencies:
-* NanoPB (https://github.com/nanopb/nanopb)
-* Arduino-Makefile (https://github.com/sudar/Arduino-Makefile)
-* PacketSerial (https://github.com/bakercp/PacketSerial)
+## Dependencies
+* _Teensyduino_ (https://www.pjrc.com/teensy/teensyduino.html)
+* _NanoPB_ (https://github.com/nanopb/nanopb)
+* _Arduino-Makefile_ (https://github.com/sudar/Arduino-Makefile)
+* _PacketSerial_ (https://github.com/bakercp/PacketSerial)
 
-To compile:
+## Building
 * Get Arduino Makefile.
-* Get NanoPB. I assume its binary distribution was simply extracted to some folder. Point the environment variable NANOPB to the nanopb install dir such that $NANOPB/generator-bin/protoc is the compiler that comes with nanopb.
-* Clone PacketSerial as submodule ($git submodule update PacketSerial (?))
-* $make  or $make upload
+* Get NanoPB. I assume its binary distribution was extracted somewhere. Point the environment variable NANOPB to the nanopb install dir such that ```NANOPB/generator-bin/protoc``` is the compiler that comes with nanopb.
+* Clone PacketSerial as submodule ```git submodule update PacketSerial```
+* ```make```  or ```make upload```
