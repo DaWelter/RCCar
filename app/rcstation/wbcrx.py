@@ -294,6 +294,7 @@ class ControlMainWindow(QtGui.QMainWindow):
 
     # configure bits of the UI
     self.ui.comm_indicator.auto_off_delay_millis = 100
+    self.ui.comm_indicator_tx.auto_off_delay_millis = 100
 
     def pen(col):
       return pyqtgraph.mkPen(color=col, width=2)
@@ -516,16 +517,18 @@ class ControlMainWindow(QtGui.QMainWindow):
 
   # TODO: move to thread so the command stream is not interrupted when the UI blocks.
   def send_command(self):
-    fwd, right, cam = self.receiver.command.output
-    msg = telemetry.CarControlContainerMsg(
-      steer = telemetry.CarSteerMsg(
-        speed = int(fwd * MAX_FWD_SPEED),
-        right = right,
-        cam_right = cam
+    if self.receiver.command.enabled:
+      fwd, right, cam = self.receiver.command.output
+      msg = telemetry.CarControlContainerMsg(
+        steer = telemetry.CarSteerMsg(
+          speed = int(fwd * MAX_FWD_SPEED),
+          right = right,
+          cam_right = cam
+        )
       )
-    )
-    data = telemetry.encode(msg)
-    self.receiver.send_command_raw(data)
+      data = telemetry.encode(msg)
+      self.receiver.send_command_raw(data)
+      self.ui.comm_indicator_tx.turn_on()
 
   
   def update_tick(self):

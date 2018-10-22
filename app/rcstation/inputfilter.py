@@ -24,27 +24,32 @@ class ConstantState(object):
   def __init__(self, c):
     self.state = c
 
-  def updateS(self, dt):
+  def updateS(self, dt, marker):
     pass
 
 class TimeContinuousSignalFilter(object):
   def __init__(self):
     self.source = None
+    self.marker = 0
     
-  def updateS(self, dt):
-    self.source.updateS(dt)
-    self.update(dt, self.source.state)
+  def updateS(self, dt, marker):
+    if self.marker != marker:
+      self.marker = marker
+      self.source.updateS(dt, marker)
+      self.update(dt, self.source.state)
 
 
-class TimeContinuousSignalFilter2(object):
-  def __init__(self):
-    self.source1 = None
-    self.source2 = None
-  
-  def updateS(self, dt):
-    self.source1.updateS(dt)
-    self.source2.updateS(dt)
-    self.update(dt, self.source1.state, self.source2.state)
+class TimeContinuousSignalFilterN(object):
+  def __init__(self, N):
+    self.sources = [None] * N
+    self.marker = 0
+
+  def updateS(self, dt, marker):
+    if self.marker != marker:
+      self.marker = marker
+      for s in self.sources:
+        s.updateS(dt, marker)
+      self.update(dt, *[s.state for s in self.sources])
     
 
 class FunctionMapFilter(TimeContinuousSignalFilter):
@@ -58,9 +63,9 @@ class FunctionMapFilter(TimeContinuousSignalFilter):
 
 
 
-class BinaryFunctionMapFilter(TimeContinuousSignalFilter2):
+class BinaryFunctionMapFilter(TimeContinuousSignalFilterN):
   def __init__(self, fun):
-    TimeContinuousSignalFilter2.__init__(self)
+    TimeContinuousSignalFilterN.__init__(self, 2)
     self.fun = fun
     self.state = 0.
   
@@ -68,10 +73,14 @@ class BinaryFunctionMapFilter(TimeContinuousSignalFilter2):
     self.state = self.fun(f1, f2)
 
 
-def chain(instance, *sources):
+def Multiply():
+  return BinaryFunctionMapFilter(lambda x, y: x*y)
+
+
+def connect(instance, *sources):
   if len(sources) > 1:
     for i, source in enumerate(sources):
-      setattr(instance, 'source%i' % (i+1), source)
+      instance.sources[i] = source
   else:
     instance.source = sources[0]
   return instance
@@ -105,9 +114,9 @@ class SecondOrderFilter(TimeContinuousSignalFilter):
     self.v     = vNew
 
 
-class ForwardControlIntegrator(TimeContinuousSignalFilter2):
+class ForwardControlIntegrator(TimeContinuousSignalFilterN):
   def __init__(self):  
-    TimeContinuousSignalFilter2.__init__(self)
+    TimeContinuousSignalFilterN.__init__(self,2)
     self.state = 0.
     self.lastRate = 0.
     self.fwdBounds   = -1., 1.
@@ -125,9 +134,9 @@ class ForwardControlIntegrator(TimeContinuousSignalFilter2):
     self.fwdLastRate = fnofilt
 
 
-class LinearRampWithHandBrake(TimeContinuousSignalFilter2):
+class LinearRampWithHandBrake(TimeContinuousSignalFilterN):
   def __init__(self, rate, brake_rate, normal_decay_rate):
-    TimeContinuousSignalFilter2.__init__(self)
+    TimeContinuousSignalFilterN.__init__(self, 2)
     self.rate = rate
     self.brake_rate = brake_rate
     self.normal_decay_rate = normal_decay_rate
@@ -176,7 +185,24 @@ class DiscretValueSwitch(TimeContinuousSignalFilter):
     else:
       if abs(f) < self.threshold - self.hysteresis:
         self.isNeutral = True
-      
+
+
+class ControlEnabled(TimeContinuousSignalFilterN):
+  def __init__(self, N):
+    TimeContinuousSignalFilterN.__init__(self, N)
+    self.state = 0.
+
+  def update(self, df, *yy):
+    disable_signal = yy[0]
+    enable_signals = yy[1:]
+    if self.state == 0.:
+      if disable_signal == 0. and any([abs(s)>1.e-6 for s in enable_signals]):
+        self.state = 1.
+    else:
+      if disable_signal:
+        self.state = 0.
+
+
 
 ###############################################################################
 ### Joystick input handling
@@ -189,7 +215,7 @@ class JoystickInputAxisFilter(object):
     self.multiplier = multiplier
     self.stick.init()
   
-  def updateS(self, dt):
+  def updateS(self, dt, marker):
     self.state = self.multiplier*self.stick.get_axis(self.axis)
     #NOTE: Gamepad axis values reach max their limits then the physical stick is moved to only 50% of max deflection.
 
@@ -202,7 +228,7 @@ class JoystickInputButtonFilter(object):
     self.multiplier = multiplier
     self.stick.init()
   
-  def updateS(self, dt):
+  def updateS(self, dt, marker):
     self.state = self.multiplier*self.stick.get_button(self.button)
 
 
@@ -320,6 +346,7 @@ class SteeringControl(object):
   def __init__(self):
     self.eventHandlers = []
     self.lastTime = None
+    self.marker = 0
     if not self.setupJoystickControl():
       self.setupKeyboardControl()
   
@@ -351,6 +378,8 @@ class SteeringControl(object):
     camFilt = SecondOrderFilter(10.)
     camFilt.source = kbCam
     self.filtCamera = camFilt
+    # Abort
+    self.abortBtn = abortBtn = KeyboardInputFilter(QtCore.Qt.Key_Space, None)
     # gui stuff
     self.eventHandlers += [kbFwd, kbRight, kbCam]
 
@@ -365,29 +394,35 @@ class SteeringControl(object):
 
     self.rawRight = stickRight = config['steerAxis']
     self.rawFwd   = stickFwd = config['fwdAxis']
+    self.rawCamera = stickCamera = config['camAxis']
     self.rawFaster = stickFaster = config['faster']
     self.rawSlower = stickSlower = config['slower']
-    self.rawCamera = stickCamera = config['camAxis']
+    self.rawAbortBtn = stickAbort = config['abort']
     stickFwd.multiplier = -1.
-    #stickSlower.multiplier = -1.
+    stickSlower.multiplier = -1.
 
-    #gears = chain(BinaryFunctionMapFilter(lambda a,b: a + b), stickFaster, stickSlower)
-    #gears = chain(DiscretValueSwitch([0.05, 0.1, 0.2, 0.5, 1.], 0.05, 0.5, 0.1), gears)
-    gears = chain(BinaryFunctionMapFilter(lambda a, b: max(a,b)), stickFaster, stickSlower)
-    # fwd = chain(BinaryFunctionMapFilter(lambda a,b: a * b),
-    #             gears,
-    #             chain(FunctionMapFilter(lambda x: sgn(x)*pow(abs(x), 1.0)),
-    #                   stickFwd))
-    #fwd = chain(SecondOrderFilter(30.), fwd)
-    fwd = stickFwd
-    fwd = chain(LinearRampWithHandBrake(1., 2., 0.2), fwd, gears)
+    self.enable_ = enable = connect(ControlEnabled(4), stickAbort, stickRight, stickFwd, stickCamera)
+    stickRight = connect(Multiply(), stickRight, enable)
+    stickFwd = connect(Multiply(), stickFwd, enable)
+    stickCamera = connect(Multiply(), stickCamera, enable)
+
+    gears = connect(BinaryFunctionMapFilter(lambda a,b: a + b), stickFaster, stickSlower)
+    gears = connect(DiscretValueSwitch([0.05, 0.1, 0.2, 0.5, 1.], 0.05, 0.5, 0.1), gears)
+    #gears = connect(BinaryFunctionMapFilter(lambda a, b: max(a, b)), stickFaster, stickSlower)
+    fwd = connect(BinaryFunctionMapFilter(lambda a,b: a * b),
+                gears,
+                connect(FunctionMapFilter(lambda x: sgn(x)*pow(abs(x), 1.5)),
+                    stickFwd))
+    fwd = connect(SecondOrderFilter(10., 1.2), fwd)
+    #fwd = stickFwd
+    #fwd = connect(LinearRampWithHandBrake(1., 2., 0.2), fwd, gears)
+    right = connect(SecondOrderFilter(10.),
+                    stickRight)
     self.filtFwd = fwd
-    self.filtGears   = gears
-    self.filtCamera = self.rawCamera
-    
-    right = chain(SecondOrderFilter(30.),
-                  stickRight)
+    self.filtGears = gears
+    self.filtCamera = stickCamera
     self.filtRight = right
+
     return True
 
   def keyPressEvent(self, e):
@@ -411,10 +446,15 @@ class SteeringControl(object):
     if self.lastTime is not None:
       t = self.lastTime
       dt = tNew - t
-      self.filtFwd.updateS(dt)
-      self.filtRight.updateS(dt)
-      self.filtCamera.updateS(dt)
+      self.marker += 1
+      self.filtFwd.updateS(dt, self.marker)
+      self.filtRight.updateS(dt, self.marker)
+      self.filtCamera.updateS(dt, self.marker)
     self.lastTime = tNew
+
+  @property
+  def enabled(self):
+    return self.enable_.state > 0.5
 
   @property
   def gears(self):

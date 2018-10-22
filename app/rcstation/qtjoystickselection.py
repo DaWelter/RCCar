@@ -134,7 +134,7 @@ if __name__ == '__main__':
       self.SUPER.__init__(self, parent)
       
       self.commands = []
-      for name in "fwdAxis steerAxis slower faster camAxis".split():
+      for name in "fwdAxis steerAxis slower faster camAxis abort".split():
         self.commands.append(Command(name))
       
       self.centralWidget = QtGui.QWidget(self)
