@@ -9,6 +9,7 @@ import json
 import os
 import collections
 import pygame
+import inspect
 
 try:
   from PyQt5 import QtCore
@@ -27,24 +28,16 @@ class ConstantState(object):
   def updateS(self, dt, marker):
     pass
 
-class TimeContinuousSignalFilter(object):
-  def __init__(self):
-    self.source = None
-    self.marker = 0
-    
-  def updateS(self, dt, marker):
-    if self.marker != marker:
-      self.marker = marker
-      self.source.updateS(dt, marker)
-      self.update(dt, self.source.state)
-
-
-class TimeContinuousSignalFilterN(object):
+class Node(object):
+  """ Base class for arithmetic graph that supports differential and integral operators. """
   def __init__(self, N):
-    self.sources = [None] * N
+    self.sources = [None]*N
     self.marker = 0
+    self.state = 0.
 
   def updateS(self, dt, marker):
+    # The 'marker' is used to prevent multiple evaluations.
+    # Supply a different value every time the graph is evaluated.
     if self.marker != marker:
       self.marker = marker
       for s in self.sources:
@@ -52,41 +45,27 @@ class TimeContinuousSignalFilterN(object):
       self.update(dt, *[s.state for s in self.sources])
     
 
-class FunctionMapFilter(TimeContinuousSignalFilter):
+class Function(Node):
   def __init__(self, fun):
-    TimeContinuousSignalFilter.__init__(self)
+    Node.__init__(self, len(inspect.getargspec(fun).args))
     self.fun = fun
     self.state = 0.
   
-  def update(self, dt, f):
-    self.state = self.fun(f)
-
-
-
-class BinaryFunctionMapFilter(TimeContinuousSignalFilterN):
-  def __init__(self, fun):
-    TimeContinuousSignalFilterN.__init__(self, 2)
-    self.fun = fun
-    self.state = 0.
-  
-  def update(self, dt, f1, f2):
-    self.state = self.fun(f1, f2)
+  def update(self, dt, *u):
+    self.state = self.fun(*u)
 
 
 def Multiply():
-  return BinaryFunctionMapFilter(lambda x, y: x*y)
+  return Function(lambda x, y: x*y)
 
 
 def connect(instance, *sources):
-  if len(sources) > 1:
-    for i, source in enumerate(sources):
-      instance.sources[i] = source
-  else:
-    instance.source = sources[0]
+  for i, source in enumerate(sources):
+    instance.sources[i] = source
   return instance
 
 
-class SecondOrderFilter(TimeContinuousSignalFilter):
+class SecondOrderFilter(Node):
   '''driven spring-damper system; numerically integrated,
      
      First Argument is dampending coefficient. Note: If no spring
@@ -97,12 +76,10 @@ class SecondOrderFilter(TimeContinuousSignalFilter):
      time without overshoot.
   '''
   def __init__(self, coeffD, springyness = 1.):
-    TimeContinuousSignalFilter.__init__(self)
-    self.state   = 0. # position
+    Node.__init__(self, 1)
     self.v       = 0. # speed
     self.coeffD = coeffD
     self.coeffP = self.coeffD**2 / 4. * springyness
-    self.source = None
 
   def update(self, dt, f):
     v, y = self.v, self.state
@@ -114,10 +91,9 @@ class SecondOrderFilter(TimeContinuousSignalFilter):
     self.v     = vNew
 
 
-class ForwardControlIntegrator(TimeContinuousSignalFilterN):
+class ForwardControlIntegrator(Node):
   def __init__(self):  
-    TimeContinuousSignalFilterN.__init__(self,2)
-    self.state = 0.
+    Node.__init__(self, 2)
     self.lastRate = 0.
     self.fwdBounds   = -1., 1.
     self.coeffFwdRate = 2.
@@ -134,9 +110,9 @@ class ForwardControlIntegrator(TimeContinuousSignalFilterN):
     self.fwdLastRate = fnofilt
 
 
-class LinearRampWithHandBrake(TimeContinuousSignalFilterN):
+class LinearRampWithHandBrake(Node):
   def __init__(self, rate, brake_rate, normal_decay_rate):
-    TimeContinuousSignalFilterN.__init__(self, 2)
+    Node.__init__(self, 2)
     self.rate = rate
     self.brake_rate = brake_rate
     self.normal_decay_rate = normal_decay_rate
@@ -151,9 +127,9 @@ class LinearRampWithHandBrake(TimeContinuousSignalFilterN):
     self.state = clamp(self.state + du + db + dd, -1., 1.)
 
 
-class DiscretValueSwitch(TimeContinuousSignalFilter):
+class DiscretValueSwitch(Node):
   def __init__(self, values, debounceTime, threshold, hysteresis):
-    TimeContinuousSignalFilter.__init__(self)
+    Node.__init__(self, 1)
     assert len(values) > 0
     self.maxIndex = len(values)-1
     self.values = values
@@ -187,12 +163,11 @@ class DiscretValueSwitch(TimeContinuousSignalFilter):
         self.isNeutral = True
 
 
-class ControlEnabled(TimeContinuousSignalFilterN):
+class ControlEnabled(Node):
   def __init__(self, N):
-    TimeContinuousSignalFilterN.__init__(self, N)
-    self.state = 0.
+    Node.__init__(self, N)
 
-  def update(self, df, *yy):
+  def update(self, dt, *yy):
     disable_signal = yy[0]
     enable_signals = yy[1:]
     if self.state == 0.:
@@ -353,10 +328,10 @@ class SteeringControl(object):
   def setupKeyboardControl(self):
     self.rawFwd = kbFwd     = KeyboardInputFilter(QtCore.Qt.Key_W, QtCore.Qt.Key_S)
     # create pipeline nodes
-    fwdScale = FunctionMapFilter(lambda x: x * 1.)
+    fwdScale = Function(lambda x: x * 1.)
     fwdFilt  = SecondOrderFilter(50.)
     fwdInt   = ForwardControlIntegrator()
-    fwdFilt2 = FunctionMapFilter(lambda x: sgn(x)*pow(abs(x), 1.2))
+    fwdFilt2 = Function(lambda x: sgn(x) * pow(abs(x), 1.2))
     # setup pipeline
     fwdScale.source = kbFwd
     fwdFilt.source = fwdScale
@@ -406,13 +381,13 @@ class SteeringControl(object):
     stickFwd = connect(Multiply(), stickFwd, enable)
     stickCamera = connect(Multiply(), stickCamera, enable)
 
-    gears = connect(BinaryFunctionMapFilter(lambda a,b: a + b), stickFaster, stickSlower)
+    gears = connect(Function(lambda a,b: a + b), stickFaster, stickSlower)
     gears = connect(DiscretValueSwitch([0.05, 0.1, 0.2, 0.5, 1.], 0.05, 0.5, 0.1), gears)
     #gears = connect(BinaryFunctionMapFilter(lambda a, b: max(a, b)), stickFaster, stickSlower)
-    fwd = connect(BinaryFunctionMapFilter(lambda a,b: a * b),
+    fwd = connect(Function(lambda a,b: a * b),
                 gears,
-                connect(FunctionMapFilter(lambda x: sgn(x)*pow(abs(x), 1.5)),
-                    stickFwd))
+                connect(Function(lambda x: sgn(x) * pow(abs(x), 1.5)),
+                        stickFwd))
     fwd = connect(SecondOrderFilter(10., 1.2), fwd)
     #fwd = stickFwd
     #fwd = connect(LinearRampWithHandBrake(1., 2., 0.2), fwd, gears)
