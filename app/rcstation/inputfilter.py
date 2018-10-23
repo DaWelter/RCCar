@@ -93,20 +93,21 @@ class SecondOrderFilter(Node):
 
 class ForwardControlIntegrator(Node):
   def __init__(self):  
-    Node.__init__(self, 2)
+    Node.__init__(self, 3)
     self.lastRate = 0.
-    self.fwdBounds   = -1., 1.
-    self.coeffFwdRate = 2.
+    self.coeffFwdRate = 1.
+    self.side = 1  # Positive or negative value range.
+    self.can_switch_side = True  # Next input determines which side we take.
 
-  def update(self, dt, f, fnofilt):
-    if abs(f) < 1.e-3:
-      f = 0.
-    if self.state > -1.e-3 and fnofilt > 0. and (self.fwdLastRate) < 1.e-3:
-      self.fwdBounds = (0., 1.)
-    elif self.state < 1.e-3 and fnofilt < 0. and abs(self.fwdLastRate) < 1.e-3:
-      self.fwdBounds = (-1., 0.)
-    self.state = self.state + dt * f**3 * self.coeffFwdRate
-    self.state = min(max(self.state, self.fwdBounds[0]), self.fwdBounds[1])
+  def update(self, dt, f, fnofilt, bounds):
+    if abs(fnofilt) < 1.e-3 and abs(self.state) < 1.e-3:
+      self.can_switch_side = True
+    elif self.can_switch_side:
+      self.can_switch_side = False
+      self.side = 1 if fnofilt>0 else -1
+    bounds = (0., bounds) if self.side==1 else (-bounds, 0.)
+    self.state = self.state + dt * f * self.coeffFwdRate
+    self.state = min(max(self.state, bounds[0]), bounds[1])
     self.fwdLastRate = fnofilt
 
 
@@ -311,7 +312,7 @@ class KeyboardInputFilter(object):
       self.state -= 1. if e.key()==u else -1.
       #print 'state %s/%s = %s' % (u, d, self.state)
   
-  def updateS(self, dt):
+  def updateS(self, dt, marker):
     pass  
   
 # NOTE: you think the joystick has a deadzone. Well the linux joystick driver
@@ -327,36 +328,29 @@ class SteeringControl(object):
   
   def setupKeyboardControl(self):
     self.rawFwd = kbFwd     = KeyboardInputFilter(QtCore.Qt.Key_W, QtCore.Qt.Key_S)
-    # create pipeline nodes
-    fwdScale = Function(lambda x: x * 1.)
-    fwdFilt  = SecondOrderFilter(50.)
-    fwdInt   = ForwardControlIntegrator()
-    fwdFilt2 = Function(lambda x: sgn(x) * pow(abs(x), 1.2))
-    # setup pipeline
-    fwdScale.source = kbFwd
-    fwdFilt.source = fwdScale
-    fwdInt.source1 = fwdFilt
-    fwdInt.source2 = fwdScale
-    fwdFilt2.source = fwdInt
-    self.filtFwd = fwdFilt2
-    # create pipeline nodes
-    self.rawRight = kbRight   = KeyboardInputFilter(QtCore.Qt.Key_D, QtCore.Qt.Key_A)
-    rightFilt = SecondOrderFilter(10.)
-    # setup pipeline    
-    rightFilt.source = kbRight
-    self.filtRight = rightFilt
-    # We don't use the gears mode with keyboards, so just make 
+    self.rawRight = kbRight = KeyboardInputFilter(QtCore.Qt.Key_D, QtCore.Qt.Key_A)
+    self.rawCamera = kbCam = KeyboardInputFilter(QtCore.Qt.Key_Right, QtCore.Qt.Key_Left)
+    self.abortBtn = abortBtn = KeyboardInputFilter(QtCore.Qt.Key_Space, None)
+    self.enable_ = enable = connect(ControlEnabled(4), abortBtn, kbFwd, kbRight, kbCam)
+    self.eventHandlers += [kbFwd, kbRight, kbCam, abortBtn]
+
+    kbFwd, kbRight, kbCam = \
+      connect(Multiply(), kbFwd, enable),\
+      connect(Multiply(), kbRight, enable),\
+      connect(Multiply(), kbCam, enable)
+
+    fwdInt = \
+      connect(ForwardControlIntegrator(),
+              connect(SecondOrderFilter(50.), kbFwd), kbFwd,
+              enable # Sets the bounds to zero when disabled, effectively zero'ing the integral value.
+              )
+    self.filtFwd = fwdFilt2 = connect(Function(lambda x: sgn(x) * pow(abs(x), 1.2)), fwdInt)
+
+    self.filtRight = rightFilt = connect(SecondOrderFilter(10.), kbRight)
+    self.filtCamera = camFilt = connect(SecondOrderFilter(10.), kbCam)
+    # We don't use the gears mode with keyboards, so just make
     # this class return the sensible value of 1., i.e. full speed.
     self.filtGears = ConstantState(1.)
-    # Camera control
-    self.rawCamera = kbCam = KeyboardInputFilter(QtCore.Qt.Key_Right, QtCore.Qt.Key_Left)
-    camFilt = SecondOrderFilter(10.)
-    camFilt.source = kbCam
-    self.filtCamera = camFilt
-    # Abort
-    self.abortBtn = abortBtn = KeyboardInputFilter(QtCore.Qt.Key_Space, None)
-    # gui stuff
-    self.eventHandlers += [kbFwd, kbRight, kbCam]
 
   def setupJoystickControl(self):
     filename = os.path.join(os.environ['HOME'], '.local', 'rccar', 'joystick.json')
@@ -364,7 +358,7 @@ class SteeringControl(object):
     if config is None:
       return False
 
-    if not all((k in config) for k in ['steerAxis', 'fwdAxis', 'faster', 'slower', 'camAxis']):
+    if not all((k in config) for k in ['steerAxis', 'fwdAxis', 'faster', 'slower', 'camAxis', 'abort']):
       return False
 
     self.rawRight = stickRight = config['steerAxis']
@@ -383,14 +377,11 @@ class SteeringControl(object):
 
     gears = connect(Function(lambda a,b: a + b), stickFaster, stickSlower)
     gears = connect(DiscretValueSwitch([0.05, 0.1, 0.2, 0.5, 1.], 0.05, 0.5, 0.1), gears)
-    #gears = connect(BinaryFunctionMapFilter(lambda a, b: max(a, b)), stickFaster, stickSlower)
     fwd = connect(Function(lambda a,b: a * b),
                 gears,
                 connect(Function(lambda x: sgn(x) * pow(abs(x), 1.5)),
                         stickFwd))
     fwd = connect(SecondOrderFilter(10., 1.2), fwd)
-    #fwd = stickFwd
-    #fwd = connect(LinearRampWithHandBrake(1., 2., 0.2), fwd, gears)
     right = connect(SecondOrderFilter(10.),
                     stickRight)
     self.filtFwd = fwd
